@@ -1,0 +1,57 @@
+name: Repack Hangover (Wine + FEX, glibc) ke WCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      hangover_tag:
+        description: "Tag rilis AndreRH/hangover (kosong = terbaru), mis. hangover-11.0"
+        default: "hangover-11.0"
+      version_name:
+        description: "versionName di profile.json (juga nama berkas)"
+        default: "hangover-11.0-arm64ec"
+      version_code:
+        description: "versionCode (angka)"
+        default: "1"
+      create_release:
+        description: "Unggah juga ke GitHub Release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  repack:
+    runs-on: ubuntu-24.04-arm
+    env:
+      HANGOVER_TAG: ${{ inputs.hangover_tag }}
+      VERSION_NAME: ${{ inputs.version_name }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      WCP_TYPE: Wine
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ambil dan susun ulang Hangover
+        run: bash scripts/repack-hangover.sh
+      - name: Verifikasi (glibc, bukan bionic)
+        run: bash scripts/verify.sh out/usr
+      - name: Bungkus WCP
+        run: COMMIT="$(cat .hangover-tag)" bash scripts/package-wcp.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wine-${{ inputs.version_name }}-wcp
+          path: |
+            dist/*.wcp
+            dist/*.sha256
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+      - name: Unggah ke Release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wine-${{ inputs.version_name }}-${{ github.run_number }}
+          name: Wine ${{ inputs.version_name }} (Hangover, glibc)
+          files: |
+            dist/*.wcp
+            dist/*.sha256
