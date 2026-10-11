@@ -8,7 +8,10 @@ rm -rf "$STAGE" "$DIST"; mkdir -p "$STAGE" "$DIST"
 for d in bin lib share; do
   if [ -d "$ROOT/out/usr/$d" ]; then cp -a "$ROOT/out/usr/$d" "$STAGE/$d"; fi
 done
-rm -rf "$STAGE/share/man" 2>/dev/null || true
+rm -rf "$STAGE/share/man" "$STAGE/include" "$STAGE/lib/pkgconfig" 2>/dev/null || true
+# Berkas pengembangan (import library .a) besar dan tidak dipakai saat runtime
+find "$STAGE/lib" -type f -name '*.a' -delete
+du -sh "$STAGE"
 
 commit="${COMMIT:-$(git -C "$ROOT/wine-src" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 WCP_TYPE="${WCP_TYPE:-Proton}"
