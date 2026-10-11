@@ -1,0 +1,94 @@
+name: Build Proton arm64ec (glibc) WCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      wine_repo:
+        description: "Repo sumber Wine/Proton (harus mendukung arm64ec)"
+        default: "https://github.com/ValveSoftware/wine.git"
+      wine_ref:
+        description: "Branch / tag / commit"
+        default: "proton_9.0"
+      version_name:
+        description: "versionName di profile.json (juga nama berkas)"
+        default: "9.0-arm64ec"
+      version_code:
+        description: "versionCode (angka)"
+        default: "1"
+      llvm_mingw_tag:
+        description: "Rilis mstorsjo/llvm-mingw (toolchain PE arm64ec)"
+        default: "20250305"
+      create_release:
+        description: "Unggah juga ke GitHub Release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm   # native aarch64 + glibc, cocok dengan rootfs Debian arm64
+    timeout-minutes: 300
+    env:
+      WINE_REPO: ${{ inputs.wine_repo }}
+      WINE_REF: ${{ inputs.wine_ref }}
+      VERSION_NAME: ${{ inputs.version_name }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      LLVM_MINGW_TAG: ${{ inputs.llvm_mingw_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pasang dependensi build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ccache git xz-utils python3 binutils file bison flex gettext pkg-config autoconf \
+            libfreetype-dev libfontconfig-dev libx11-dev libxext-dev libxrandr-dev libxrender-dev \
+            libxcursor-dev libxi-dev libxinerama-dev libxcomposite-dev libxfixes-dev libxxf86vm-dev \
+            libxkbcommon-dev libwayland-dev libvulkan-dev libgl-dev libglu1-mesa-dev libosmesa6-dev \
+            libpulse-dev libasound2-dev libudev-dev libusb-1.0-0-dev libsdl2-dev libgnutls28-dev \
+            libunwind-dev libcups2-dev libdbus-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libpcap-dev libkrb5-dev libopenal-dev libv4l-dev libsane-dev
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ inputs.wine_repo }}-${{ inputs.wine_ref }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.wine_repo }}-${{ inputs.wine_ref }}-
+
+      - name: Unduh llvm-mingw (host aarch64)
+        run: bash scripts/get-llvm-mingw.sh
+
+      - name: Build Wine arm64ec
+        run: bash scripts/build.sh
+
+      - name: Verifikasi (glibc, bukan bionic)
+        run: bash scripts/verify.sh out/usr
+
+      - name: Bungkus WCP
+        run: bash scripts/package-wcp.sh
+
+      - name: Unggah artefak
+        uses: actions/upload-artifact@v4
+        with:
+          name: Proton-${{ inputs.version_name }}-wcp
+          path: |
+            dist/*.wcp
+            dist/*.sha256
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Unggah ke Release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: proton-${{ inputs.version_name }}-${{ github.run_number }}
+          name: Proton ${{ inputs.version_name }} (arm64ec, glibc)
+          files: |
+            dist/*.wcp
+            dist/*.sha256

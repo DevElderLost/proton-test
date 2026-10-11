@@ -1,0 +1,6 @@
+wine-src/
+build/
+out/
+stage/
+dist/
+llvm-mingw/
